@@ -100,6 +100,7 @@ public class DynamicAlertFunction
     }
 
     if (rule.getRuleState() == Rule.RuleState.ACTIVE) {
+
       Long windowStartForEvent = rule.getWindowStartFor(currentEventTime);
 
       long cleanupTime = (currentEventTime / 1000) * 1000;

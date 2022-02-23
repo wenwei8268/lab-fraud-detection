@@ -40,6 +40,8 @@ public class Rule {
   private BigDecimal limit;
   private Integer windowMinutes;
   private ControlType controlType;
+  private RuleType ruleType;
+  private String ruleScript;
 
   public Long getWindowMillis() {
     return Time.minutes(this.windowMinutes).toMilliseconds();
@@ -116,5 +118,10 @@ public class Rule {
     CLEAR_STATE_ALL,
     DELETE_RULES_ALL,
     EXPORT_RULES_CURRENT
+  }
+
+  public enum RuleType{
+    SCRIPT,
+    PLAIN
   }
 }

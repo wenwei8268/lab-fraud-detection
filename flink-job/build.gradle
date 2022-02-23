@@ -49,6 +49,7 @@ ext {
     mockitoVersion = '1.10.19'
     junitVersion = '4.12'
     jacksonVersion = '2.10.3'
+    groovyVersion = '2.4.6'
 }
 
 sourceCompatibility = javaVersion
@@ -93,6 +94,7 @@ dependencies {
     compile "org.apache.logging.log4j:log4j-api:${log4jVersion}"
     compile "org.apache.logging.log4j:log4j-core:${log4jVersion}"
     compile "org.apache.logging.log4j:log4j-jcl:${log4jVersion}"
+    compile "org.codehaus.groovy:groovy-all:${groovyVersion}"
 
     // Test dependencies here.
     // testCompile "junit:junit:4.12"
