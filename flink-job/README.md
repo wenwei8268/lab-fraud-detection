@@ -35,3 +35,7 @@ rule_id, (rule_state), (aggregation keys), (aggregateFieldName field), (aggregat
 
 ##### Special functions:
 1,(active),(paymentType),(COUNT_FLINK),(SUM),(>),(50),(20)
+
+#### doc 
+
+https://flink.apache.org/news/2020/01/15/demo-fraud-detection.html
