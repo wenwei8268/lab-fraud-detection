@@ -20,6 +20,9 @@ package com.ververica.field.dynamicrules;
 
 import java.math.BigDecimal;
 import java.util.List;
+
+import com.google.common.collect.Maps;
+import com.ververica.field.util.GroovyUtils;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -42,6 +45,7 @@ public class Rule {
   private ControlType controlType;
   private RuleType ruleType;
   private String ruleScript;
+
 
   public Long getWindowMillis() {
     return Time.minutes(this.windowMinutes).toMilliseconds();
@@ -71,10 +75,19 @@ public class Rule {
     }
   }
 
+
   public long getWindowStartFor(Long timestamp) {
     Long ruleWindowMillis = getWindowMillis();
     return (timestamp - ruleWindowMillis);
   }
+
+
+  public static boolean checkScript(String ruleScript,Object data) {
+    Object[] data1 = new Object[]{data};
+    return  (Boolean) GroovyUtils.invokeMethod(ruleScript, "check", data1);
+
+  }
+
 
   public enum AggregatorFunctionType {
     SUM,

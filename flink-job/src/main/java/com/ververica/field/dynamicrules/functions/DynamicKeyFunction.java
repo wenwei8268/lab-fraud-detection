@@ -20,6 +20,7 @@ package com.ververica.field.dynamicrules.functions;
 
 import static com.ververica.field.dynamicrules.functions.ProcessingUtils.handleRuleBroadcast;
 
+import com.ververica.field.dynamicrules.Event;
 import com.ververica.field.dynamicrules.Keyed;
 import com.ververica.field.dynamicrules.KeysExtractor;
 import com.ververica.field.dynamicrules.Rule;
@@ -41,7 +42,7 @@ import org.apache.flink.util.Collector;
 /** Implements dynamic data partitioning based on a set of broadcasted rules. */
 @Slf4j
 public class DynamicKeyFunction
-    extends BroadcastProcessFunction<Transaction, Rule, Keyed<Transaction, String, Integer>> {
+    extends BroadcastProcessFunction<Event, Rule, Keyed<Event, String, Integer>> {
 
   private RuleCounterGauge ruleCounterGauge;
 
@@ -53,7 +54,7 @@ public class DynamicKeyFunction
 
   @Override
   public void processElement(
-      Transaction event, ReadOnlyContext ctx, Collector<Keyed<Transaction, String, Integer>> out)
+      Event event, ReadOnlyContext ctx, Collector<Keyed<Event, String, Integer>> out)
       throws Exception {
     ReadOnlyBroadcastState<Integer, Rule> rulesState =
         ctx.getBroadcastState(Descriptors.rulesDescriptor);
@@ -61,9 +62,9 @@ public class DynamicKeyFunction
   }
 
   private void forkEventForEachGroupingKey(
-      Transaction event,
+      Event event,
       ReadOnlyBroadcastState<Integer, Rule> rulesState,
-      Collector<Keyed<Transaction, String, Integer>> out)
+      Collector<Keyed<Event, String, Integer>> out)
       throws Exception {
     int ruleCounter = 0;
     for (Map.Entry<Integer, Rule> entry : rulesState.immutableEntries()) {
@@ -78,7 +79,7 @@ public class DynamicKeyFunction
 
   @Override
   public void processBroadcastElement(
-      Rule rule, Context ctx, Collector<Keyed<Transaction, String, Integer>> out) throws Exception {
+      Rule rule, Context ctx, Collector<Keyed<Event, String, Integer>> out) throws Exception {
     log.trace("Processing {}", rule);
     BroadcastState<Integer, Rule> broadcastState =
         ctx.getBroadcastState(Descriptors.rulesDescriptor);

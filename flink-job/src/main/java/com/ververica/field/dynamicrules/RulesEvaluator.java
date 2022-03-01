@@ -71,18 +71,20 @@ public class RulesEvaluator {
 
     // Streams setup
     DataStream<Rule> rulesUpdateStream = getRulesUpdateStream(env);
-    DataStream<Transaction> transactions = getTransactionsStream(env);
+    DataStream<Event> transactions = getTransactionsStream(env);
 
     BroadcastStream<Rule> rulesStream = rulesUpdateStream.broadcast(Descriptors.rulesDescriptor);
 
     // Processing pipeline setup
     DataStream<Alert> alerts =
         transactions
+            //链接数据源,先动态处理 partitionKey
             .connect(rulesStream)
             .process(new DynamicKeyFunction())
             .uid("DynamicKeyFunction")
             .name("Dynamic Partitioning Function")
             .keyBy((keyed) -> keyed.getKey())
+            //链接数据源,先动态处理 partitionKey
             .connect(rulesStream)
             .process(new DynamicAlertFunction())
             .uid("DynamicAlertFunction")
@@ -118,7 +120,7 @@ public class RulesEvaluator {
     env.execute("Fraud Detection Engine");
   }
 
-  private DataStream<Transaction> getTransactionsStream(StreamExecutionEnvironment env) {
+  private DataStream<Event> getTransactionsStream(StreamExecutionEnvironment env) {
     // Data stream setup
     SourceFunction<String> transactionSource = TransactionsSource.createTransactionsSource(config);
     int sourceParallelism = config.get(SOURCE_PARALLELISM);
@@ -126,7 +128,7 @@ public class RulesEvaluator {
         env.addSource(transactionSource)
             .name("Transactions Source")
             .setParallelism(sourceParallelism);
-    DataStream<Transaction> transactionsStream =
+    DataStream<Event> transactionsStream =
         TransactionsSource.stringsStreamToTransactions(transactionsStringsStream);
     return transactionsStream.assignTimestampsAndWatermarks(
         new SimpleBoundedOutOfOrdernessTimestampExtractor<>(config.get(OUT_OF_ORDERNESS)));
@@ -175,7 +177,7 @@ public class RulesEvaluator {
     return env;
   }
 
-  private static class SimpleBoundedOutOfOrdernessTimestampExtractor<T extends Transaction>
+  private static class SimpleBoundedOutOfOrdernessTimestampExtractor<T extends Event>
       extends BoundedOutOfOrdernessTimestampExtractor<T> {
 
     public SimpleBoundedOutOfOrdernessTimestampExtractor(int outOfOrderdnessMillis) {

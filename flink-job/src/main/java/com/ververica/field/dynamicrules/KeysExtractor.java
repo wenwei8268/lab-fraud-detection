@@ -21,14 +21,16 @@ package com.ververica.field.dynamicrules;
 import java.util.Iterator;
 import java.util.List;
 
-/** Utilities for dynamic keys extraction by field name. */
+/**
+ * Utilities for dynamic keys extraction by field name.
+ */
 public class KeysExtractor {
 
   /**
    * Extracts and concatenates field values by names.
    *
    * @param keyNames list of field names
-   * @param object target for values extraction
+   * @param object   target for values extraction
    */
   public static String getKey(List<String> keyNames, Object object)
       throws NoSuchFieldException, IllegalAccessException {

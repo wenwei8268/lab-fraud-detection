@@ -46,6 +46,12 @@ public class RulesSource {
 
   private static final int RULES_STREAM_PARALLELISM = 1;
 
+  /**
+   * 定义broadcast的数据源；
+   * @param config
+   * @return
+   * @throws IOException
+   */
   public static SourceFunction<String> createRulesSource(Config config) throws IOException {
 
     String sourceType = config.get(RULES_SOURCE);

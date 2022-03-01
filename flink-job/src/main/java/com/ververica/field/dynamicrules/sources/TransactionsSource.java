@@ -23,6 +23,7 @@ import static com.ververica.field.config.Parameters.RECORDS_PER_SECOND;
 import static com.ververica.field.config.Parameters.TRANSACTIONS_SOURCE;
 
 import com.ververica.field.config.Config;
+import com.ververica.field.dynamicrules.Event;
 import com.ververica.field.dynamicrules.KafkaUtils;
 import com.ververica.field.dynamicrules.Transaction;
 import com.ververica.field.dynamicrules.functions.JsonDeserializer;
@@ -56,13 +57,13 @@ public class TransactionsSource {
     }
   }
 
-  public static DataStream<Transaction> stringsStreamToTransactions(
+  public static DataStream<Event> stringsStreamToTransactions(
       DataStream<String> transactionStrings) {
     return transactionStrings
-        .flatMap(new JsonDeserializer<>(Transaction.class))
-        .returns(Transaction.class)
+        .flatMap(new JsonDeserializer<>(Event.class))
+        .returns(Event.class)
         .flatMap(new TimeStamper<>())
-        .returns(Transaction.class)
+        .returns(Event.class)
         .name("Transactions Deserialization");
   }
 

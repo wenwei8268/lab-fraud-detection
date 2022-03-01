@@ -18,10 +18,8 @@
 
 package com.ververica.field.dynamicrules.functions;
 
-import static com.ververica.field.dynamicrules.functions.ProcessingUtils.addToStateValuesSet;
-import static com.ververica.field.dynamicrules.functions.ProcessingUtils.handleRuleBroadcast;
-
 import com.ververica.field.dynamicrules.Alert;
+import com.ververica.field.dynamicrules.Event;
 import com.ververica.field.dynamicrules.FieldsExtractor;
 import com.ververica.field.dynamicrules.Keyed;
 import com.ververica.field.dynamicrules.Rule;
@@ -29,10 +27,6 @@ import com.ververica.field.dynamicrules.Rule.ControlType;
 import com.ververica.field.dynamicrules.Rule.RuleState;
 import com.ververica.field.dynamicrules.RuleHelper;
 import com.ververica.field.dynamicrules.RulesEvaluator.Descriptors;
-import com.ververica.field.dynamicrules.Transaction;
-import java.math.BigDecimal;
-import java.util.*;
-import java.util.Map.Entry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.accumulators.SimpleAccumulator;
 import org.apache.flink.api.common.state.BroadcastState;
@@ -47,25 +41,38 @@ import org.apache.flink.metrics.MeterView;
 import org.apache.flink.streaming.api.functions.co.KeyedBroadcastProcessFunction;
 import org.apache.flink.util.Collector;
 
-/** Implements main rule evaluation and alerting logic. */
+import java.math.BigDecimal;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.Set;
+
+import static com.ververica.field.dynamicrules.functions.ProcessingUtils.addToStateValuesSet;
+import static com.ververica.field.dynamicrules.functions.ProcessingUtils.handleRuleBroadcast;
+
+/**
+ * Implements main rule evaluation and alerting logic.
+ */
 @Slf4j
 public class DynamicAlertFunction
     extends KeyedBroadcastProcessFunction<
-        String, Keyed<Transaction, String, Integer>, Rule, Alert> {
+    String, Keyed<Event, String, Integer>, Rule, Alert> {
 
   private static final String COUNT = "COUNT_FLINK";
   private static final String COUNT_WITH_RESET = "COUNT_WITH_RESET_FLINK";
 
   private static int WIDEST_RULE_KEY = Integer.MIN_VALUE;
 
-  private transient MapState<Long, Set<Transaction>> windowState;
+  private transient MapState<Long, Set<Event>> windowState;
   private Meter alertMeter;
 
-  private MapStateDescriptor<Long, Set<Transaction>> windowStateDescriptor =
+  private MapStateDescriptor<Long, Set<Event>> windowStateDescriptor =
       new MapStateDescriptor<>(
           "windowState",
           BasicTypeInfo.LONG_TYPE_INFO,
-          TypeInformation.of(new TypeHint<Set<Transaction>>() {}));
+          TypeInformation.of(new TypeHint<Set<Event>>() {
+          }));
 
   @Override
   public void open(Configuration parameters) {
@@ -78,7 +85,7 @@ public class DynamicAlertFunction
 
   @Override
   public void processElement(
-      Keyed<Transaction, String, Integer> value, ReadOnlyContext ctx, Collector<Alert> out)
+      Keyed<Event, String, Integer> value, ReadOnlyContext ctx, Collector<Alert> out)
       throws Exception {
 
     long currentEventTime = value.getWrapped().getEventTime();
@@ -87,7 +94,7 @@ public class DynamicAlertFunction
 
     long ingestionTime = value.getWrapped().getIngestionTimestamp();
     ctx.output(Descriptors.latencySinkTag, System.currentTimeMillis() - ingestionTime);
-
+    //从stream取出数据，进行处理
     Rule rule = ctx.getBroadcastState(Descriptors.rulesDescriptor).get(value.getId());
 
     if (rule == null) {
@@ -98,34 +105,49 @@ public class DynamicAlertFunction
       //       events waiting for rules to come through
       return;
     }
+    BigDecimal aggregateResult = BigDecimal.ZERO;
+
+    Boolean matched  = false;
 
     if (rule.getRuleState() == Rule.RuleState.ACTIVE) {
+      boolean ruleResult = false;
+      if (rule.getRuleType() == Rule.RuleType.PLAIN) {
+        Long windowStartForEvent = rule.getWindowStartFor(currentEventTime);
 
-      Long windowStartForEvent = rule.getWindowStartFor(currentEventTime);
+        long cleanupTime = (currentEventTime / 1000) * 1000;
+        ctx.timerService().registerEventTimeTimer(cleanupTime);
 
-      long cleanupTime = (currentEventTime / 1000) * 1000;
-      ctx.timerService().registerEventTimeTimer(cleanupTime);
-
-      SimpleAccumulator<BigDecimal> aggregator = RuleHelper.getAggregator(rule);
-      for (Long stateEventTime : windowState.keys()) {
-        if (isStateValueInWindow(stateEventTime, windowStartForEvent, currentEventTime)) {
-          aggregateValuesInState(stateEventTime, aggregator, rule);
+        SimpleAccumulator<BigDecimal> aggregator = RuleHelper.getAggregator(rule);
+        for (Long stateEventTime : windowState.keys()) {
+          if (isStateValueInWindow(stateEventTime, windowStartForEvent, currentEventTime)) {
+            aggregateValuesInState(stateEventTime, aggregator, rule);
+          }
         }
+        aggregateResult = aggregator.getLocalValue();
+        ruleResult = rule.apply(aggregateResult);
+      } else if (rule.getRuleType() == Rule.RuleType.SCRIPT) {
+        String ruleScript = rule.getRuleScript();
+         matched = Rule.checkScript(ruleScript, rule);
+
       }
-      BigDecimal aggregateResult = aggregator.getLocalValue();
-      boolean ruleResult = rule.apply(aggregateResult);
 
       log.trace(
-          "Rule {} | {} : {} -> {}", rule.getRuleId(), value.getKey(), aggregateResult, ruleResult);
+          "Rule {} | {} : {} -> {}", rule.getRuleId(), value.getKey(), aggregateResult, ruleResult,matched);
 
       if (ruleResult) {
         if (COUNT_WITH_RESET.equals(rule.getAggregateFieldName())) {
           evictAllStateElements();
         }
         alertMeter.markEvent();
-        out.collect(
-            new Alert<>(
-                rule.getRuleId(), rule, value.getKey(), value.getWrapped(), aggregateResult));
+        if (rule.getRuleType() == Rule.RuleType.SCRIPT){
+          out.collect(
+              new Alert<>(
+                  rule.getRuleId(), rule, value.getKey(), value.getWrapped(), aggregateResult));
+        }else {
+          out.collect(
+              new Alert<>(
+                  rule.getRuleId(), rule, value.getKey(), value.getWrapped(), matched));
+        }
       }
     }
   }
@@ -173,14 +195,14 @@ public class DynamicAlertFunction
 
   private void aggregateValuesInState(
       Long stateEventTime, SimpleAccumulator<BigDecimal> aggregator, Rule rule) throws Exception {
-    Set<Transaction> inWindow = windowState.get(stateEventTime);
+    Set<Event> inWindow = windowState.get(stateEventTime);
     if (COUNT.equals(rule.getAggregateFieldName())
         || COUNT_WITH_RESET.equals(rule.getAggregateFieldName())) {
-      for (Transaction event : inWindow) {
+      for (Event event : inWindow) {
         aggregator.add(BigDecimal.ONE);
       }
     } else {
-      for (Transaction event : inWindow) {
+      for (Event event : inWindow) {
         BigDecimal aggregatedValue =
             FieldsExtractor.getBigDecimalByName(rule.getAggregateFieldName(), event);
         aggregator.add(aggregatedValue);
