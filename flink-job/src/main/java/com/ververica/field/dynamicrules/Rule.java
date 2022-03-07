@@ -41,6 +41,7 @@ public class Rule {
   private AggregatorFunctionType aggregatorFunctionType;
   private LimitOperatorType limitOperatorType;
   private BigDecimal limit;
+  //窗口时间，基于业务逻辑构建的串口
   private Integer windowMinutes;
   private ControlType controlType;
   private RuleType ruleType;

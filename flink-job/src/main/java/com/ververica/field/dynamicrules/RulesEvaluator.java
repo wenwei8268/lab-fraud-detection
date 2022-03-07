@@ -37,8 +37,10 @@ import com.ververica.field.dynamicrules.sinks.CurrentRulesSink;
 import com.ververica.field.dynamicrules.sinks.LatencySink;
 import com.ververica.field.dynamicrules.sources.RulesSource;
 import com.ververica.field.dynamicrules.sources.TransactionsSource;
+
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
+
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.state.MapStateDescriptor;
@@ -80,16 +82,18 @@ public class RulesEvaluator {
         transactions
             //链接数据源,先动态处理 partitionKey
             .connect(rulesStream)
+            //key by 之前 用BroadcastProcessFunction
             .process(new DynamicKeyFunction())
             .uid("DynamicKeyFunction")
             .name("Dynamic Partitioning Function")
             .keyBy((keyed) -> keyed.getKey())
-            //链接数据源,先动态处理 partitionKey
+            //处理和rule
             .connect(rulesStream)
+            // key by 之后 用KeyedBroadcastProcessFunction
             .process(new DynamicAlertFunction())
             .uid("DynamicAlertFunction")
             .name("Dynamic Rule Evaluation Function");
-
+    //测流输出，迟到的数据
     DataStream<Long> latency =
         ((SingleOutputStreamOperator<Alert>) alerts).getSideOutput(Descriptors.latencySinkTag);
 
@@ -105,6 +109,7 @@ public class RulesEvaluator {
         .addSink(AlertsSink.createAlertsSink(config))
         .setParallelism(sinkParallelism)
         .name("Alerts JSON Sink");
+
     currentRulesJson
         .addSink(CurrentRulesSink.createRulesSink(config))
         .setParallelism(sinkParallelism)
@@ -195,8 +200,10 @@ public class RulesEvaluator {
         new MapStateDescriptor<>(
             "rules", BasicTypeInfo.INT_TYPE_INFO, TypeInformation.of(Rule.class));
 
-    public static final OutputTag<Long> latencySinkTag = new OutputTag<Long>("latency-sink") {};
+    public static final OutputTag<Long> latencySinkTag = new OutputTag<Long>("latency-sink") {
+    };
     public static final OutputTag<Rule> currentRulesSinkTag =
-        new OutputTag<Rule>("current-rules-sink") {};
+        new OutputTag<Rule>("current-rules-sink") {
+        };
   }
 }

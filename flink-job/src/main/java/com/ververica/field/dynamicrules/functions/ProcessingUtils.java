@@ -38,7 +38,7 @@ class ProcessingUtils {
         break;
     }
   }
-
+  //将状态集合放入状态后端
   static <K, V> Set<V> addToStateValuesSet(MapState<K, Set<V>> mapState, K key, V value)
       throws Exception {
 

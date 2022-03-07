@@ -83,15 +83,22 @@ public class DynamicAlertFunction
     getRuntimeContext().getMetricGroup().meter("alertsPerSecond", alertMeter);
   }
 
+  /**
+   * 处理事件流的信息
+   * @param value
+   * @param ctx
+   * @param out
+   * @throws Exception
+   */
   @Override
   public void processElement(
       Keyed<Event, String, Integer> value, ReadOnlyContext ctx, Collector<Alert> out)
       throws Exception {
-
+    //事件时间
     long currentEventTime = value.getWrapped().getEventTime();
 
     addToStateValuesSet(windowState, currentEventTime, value.getWrapped());
-
+    //数据进入到flink时间
     long ingestionTime = value.getWrapped().getIngestionTimestamp();
     ctx.output(Descriptors.latencySinkTag, System.currentTimeMillis() - ingestionTime);
     //从stream取出数据，进行处理
@@ -112,9 +119,11 @@ public class DynamicAlertFunction
     if (rule.getRuleState() == Rule.RuleState.ACTIVE) {
       boolean ruleResult = false;
       if (rule.getRuleType() == Rule.RuleType.PLAIN) {
+        //获取窗口计算的起始时间
         Long windowStartForEvent = rule.getWindowStartFor(currentEventTime);
-
+        //？？？？ todo
         long cleanupTime = (currentEventTime / 1000) * 1000;
+        //注册ontimer的时间
         ctx.timerService().registerEventTimeTimer(cleanupTime);
 
         SimpleAccumulator<BigDecimal> aggregator = RuleHelper.getAggregator(rule);
@@ -152,6 +161,13 @@ public class DynamicAlertFunction
     }
   }
 
+  /**
+   * 处理rule的信息
+   * @param rule
+   * @param ctx
+   * @param out
+   * @throws Exception
+   */
   @Override
   public void processBroadcastElement(Rule rule, Context ctx, Collector<Alert> out)
       throws Exception {
@@ -220,6 +236,13 @@ public class DynamicAlertFunction
     }
   }
 
+  /**
+   * 基于事件定义的定时器，将不满足条件的事件，清除MapStateValue
+   * @param timestamp
+   * @param ctx
+   * @param out
+   * @throws Exception
+   */
   @Override
   public void onTimer(final long timestamp, final OnTimerContext ctx, final Collector<Alert> out)
       throws Exception {
@@ -228,6 +251,7 @@ public class DynamicAlertFunction
 
     Optional<Long> cleanupEventTimeWindow =
         Optional.ofNullable(widestWindowRule).map(Rule::getWindowMillis);
+    //清除不满足条件的event；
     Optional<Long> cleanupEventTimeThreshold =
         cleanupEventTimeWindow.map(window -> timestamp - window);
 
